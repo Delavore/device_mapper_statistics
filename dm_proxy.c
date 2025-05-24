@@ -9,6 +9,7 @@
 #include <linux/string.h>
 #include <linux/kernel.h>
 
+// Used to create unique name of device
 static int counter = 0;
 
 struct dev_statistics {
@@ -21,9 +22,13 @@ struct dev_statistics {
     unsigned int total_size;
 };
 
-/*  Stores information about every underlying device
+/*  
+	Wrapper for storing information about every underlying device
     Params:
-    dev         
+    dev : out device
+	start : start of our sector (Not mb)
+	statistics : our structure to storing information 	
+	dm_kobj : kernel object, need for sysfs
 */
 struct private_dmp_target {
     struct dm_dev *dev;
@@ -33,10 +38,14 @@ struct private_dmp_target {
     struct kobject dm_kobj;
 };
 
-/* sysfs show callback for sysfs_ops */
-static ssize_t dmp_sysfs_show(struct kobject *kobj, struct attribute *attr, char *buf)
-{
-    struct private_dmp_target *pdmp = container_of(kobj, struct private_dmp_target, dm_kobj);
+
+/* SYSFS FUNCTIONS AND STRUCTURES */
+
+
+// Sysfs show callback for sysfs_ops 
+static ssize_t dmp_sysfs_read(struct kobject *kobj, struct attribute *attr, char *buf) {
+    struct private_dmp_target *pdmp = container_of(kobj, struct private_dmp_target,
+																			 dm_kobj);
 
     if (strcmp(attr->name, "volumes") == 0) {
         return scnprintf(buf, PAGE_SIZE,
@@ -63,13 +72,13 @@ static ssize_t dmp_sysfs_show(struct kobject *kobj, struct attribute *attr, char
 }
 
 static const struct sysfs_ops dmp_sysfs_ops = {
-    .show = dmp_sysfs_show,
-    .store = NULL,  // we dont need to write 
+    .show = dmp_sysfs_read,
+    .store = NULL,  // We dont need to write to our device
 };
 
 static struct attribute dm_attr_volumes = {
     .name = "volumes",
-    .mode = 0444,
+    .mode = 0444,  // Can only read
 };
 
 static struct attribute *dm_attrs[] = {
@@ -86,10 +95,11 @@ static const struct attribute_group *dm_groups[] = {
     NULL,
 };
 
-/* Cleanup */
+// Cleanup, call when we put device
 static void dm_release(struct kobject *kobj)
 {
-    struct private_dmp_target *pdmp = container_of(kobj, struct private_dmp_target, dm_kobj);
+    struct private_dmp_target *pdmp = container_of(kobj, struct private_dmp_target,
+																		 dm_kobj);
     kfree(pdmp);
 }
 
@@ -99,6 +109,11 @@ static struct kobj_type dm_ktype = {
     .sysfs_ops = &dmp_sysfs_ops,
 };
 
+
+/* DEVICE MAPPER STRUCTURE */
+
+
+// Constructor, called when we create device
 static int dmp_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 {
     pr_debug("func dmp_ctr: begin of constructor\n");
@@ -137,7 +152,7 @@ static int dmp_ctr(struct dm_target *ti, unsigned int argc, char **argv)
     char name[32];
     snprintf(name, sizeof(name), "dmp-%d", counter++);
 
-    if (kobject_init_and_add(&pdmp->dm_kobj, &dm_ktype, kernel_kobj, name)) {
+    if (kobject_init_and_add(&pdmp->dm_kobj, &dm_ktype, kernel_kobj, name)) {  // &THIS_MODULE->mkobj.kobj
         pr_err("func dmp_ctr: kobject_init_and_add failed\n");
         dm_put_device(ti, pdmp->dev);
         kfree(pdmp);
@@ -149,6 +164,7 @@ static int dmp_ctr(struct dm_target *ti, unsigned int argc, char **argv)
     return 0;
 }
 
+// Main device mapper function, called with every operation (read, whire, etc...)
 static int dmp_map(struct dm_target *ti, struct bio *bio)
 {
 	pr_debug("func dmp_map: begin of func\n");
@@ -183,9 +199,10 @@ static int dmp_map(struct dm_target *ti, struct bio *bio)
     }
 	
 	pr_info("func dmp_map: map function worked\n");
-    return DM_MAPIO_REMAPPED;
+    return DM_MAPIO_REMAPPED;  // Tranfer control to underlying device
 }
 
+// Destructor of our device, called when object is destroyed
 static void dmp_dtr(struct dm_target *ti)
 {
     struct private_dmp_target *pdmp = (struct private_dmp_target *)ti->private;
