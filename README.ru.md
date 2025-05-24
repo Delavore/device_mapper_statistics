@@ -28,6 +28,18 @@ release вызывается при put объекта.
 Теперь попробуем в него что-нибудь записать с помощью dd.
 Например `dd if=/dev/random of=/dev/mapper/dmp1 bs=512 count=1`
 Теперь можем посмотреть информацию об устройстве (статистику):
-`cat /sys/kernel/dmp-0/volumes
-
-
+```
+cat /sys/kernel/dmp-0/volumes
+dela@axe:~/impulse/task2/module$ cat /sys/kernel/dmp-0/volumes 
+read:
+ reqs: 24
+ avg size: 4096
+write:
+ reqs: 4
+ avg size 4096
+total:
+ reqs: 28
+ avg size 4096
+```
+- Это вывод после четырех записей. Стоит заметить, что хоть мы сделали всего 4 записи, у нас произошло 24 чтения. Это сделали сторонние процессы, такие как udev 
+ sudo dmsetup create dmp2 --table "0 32 dmp /dev/mapper/zero2 0"
